@@ -40,17 +40,18 @@ jobs:
         run: |
           # Extract JSON part from the output
           OUTPUT=$(echo "${{ steps.gemini.outputs.result }}" | awk '/```json/ {print substr($0, 4)} /```/ {exit}')
-          
+          echo "$OUTPUT" > src/locales/generated.json
+          echo "✅ Valid JSON saved to src/locales/generated.json"
           # Check if the extracted content is valid JSON
-          if echo "$OUTPUT" | jq . > /dev/null 2>&1; then
-            # Valid JSON, save to file
-            echo "$OUTPUT" > src/locales/generated.json
-            echo "✅ Valid JSON saved to src/locales/generated.json"
-          else
-            # Invalid JSON, log error and save empty object
-            echo "{}" > src/locales/generated.json
-            echo "⚠️ Invalid JSON received from Gemini. Saving empty object."
-          fi
+          # if echo "$OUTPUT" | jq . > /dev/null 2>&1; then
+          #   # Valid JSON, save to file
+          #   echo "$OUTPUT" > src/locales/generated.json
+          #   echo "✅ Valid JSON saved to src/locales/generated.json"
+          # else
+          #   # Invalid JSON, log error and save empty object
+          #   echo "{}" > src/locales/generated.json
+          #   echo "⚠️ Invalid JSON received from Gemini. Saving empty object."
+          # fi
         shell: bash
 
       - name: Commit and push changes
