@@ -15,7 +15,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '22'
-          cache: 'npm' # Cache npm dependencies to speed up subsequent runs
+          cache: 'npm'
 
       - name: Install Gemini CLI
         run: npm install -g @google/gemini-cli
@@ -24,34 +24,34 @@ jobs:
         run: mkdir -p src/locales
 
       - name: Run Gemini CLI
-        id: gemini # Assign an ID to this step to access its output
+        id: gemini
         run: |
           echo "I want to extract UI text from my TSX files and generate i18n key-value pairs in English in JSON format. \
           Please follow this key naming convention: use the component file name (without extension) as the prefix, followed by the key name. \
           For example, if the file is components/Login.tsx and the text is 'Click Me!', the key should be 'login.clickMe'. Do not use nested JSON. \
-          This is running in a GitHub Actions environment, so return only the final result in valid JSON format, without any explanations, code snippets, or repeated prompts. \
-          Wrap the JSON output in triple backticks with the json language identifier, like this: \`\`\`json\n{ ... }\n\`\`\`" | gemini
+          Return only the final result in valid JSON format, wrapped in triple backticks with the json language identifier, like this: \`\`\`json\n{ ... }\n\`\`\`" | gemini
+          # Ensure the output is strictly JSON by forcing the format if necessary
+          # (This part depends on specific CLI capabilities; adjust as needed)
+          # Example pseudo-command: gemini --output-format json
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Extract JSON from Gemini output
+      - name: Extract and Validate JSON from Gemini output
         run: |
-          echo "${{ steps.gemini.outputs.result }}" | awk '/```json/{f=1;next} /```/{f=0} f' > src/locales/generated.json
-        shell: bash # Explicitly set shell to bash for string interpolation
-
-      - name: Check for valid JSON and handle empty output
-        run: |
-          if jq -e . src/locales/generated.json > /dev/null 2>&1; then
+          OUTPUT=$(echo "${{ steps.gemini.outputs.result }}" | awk '/```json/ {print substr($0, 4)} /```/ {exit}')
+          if echo "$OUTPUT" | jq . > /dev/null 2>&1; then
+            echo "$OUTPUT" > src/locales/generated.json
             echo "✅ Valid JSON saved to src/locales/generated.json"
           else
-            echo "⚠️ Invalid or empty JSON received from Gemini. Saving empty object."
             echo "{}" > src/locales/generated.json
+            echo "⚠️ Invalid JSON received from Gemini. Saving empty object."
           fi
+        shell: bash
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add src/locales/generated.json
-          git commit -m "Update generated locales" || echo "No changes to commit" # Handle cases where there are no changes
+          git commit -m "Update generated locales" || echo "No changes to commit"
           git push
