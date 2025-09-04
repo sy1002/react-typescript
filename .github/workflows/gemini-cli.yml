@@ -1,7 +1,7 @@
 name: Run Gemini CLI
 
 on:
-  workflow_dispatch:  # 수동 실행 트리거
+  workflow_dispatch:
 
 jobs:
   run-gemini:
@@ -15,50 +15,43 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '22'
+          cache: 'npm' # Cache npm dependencies to speed up subsequent runs
 
       - name: Install Gemini CLI
         run: npm install -g @google/gemini-cli
 
-      - name: Create locales directory inside src
+      - name: Create locales directory
         run: mkdir -p src/locales
 
       - name: Run Gemini CLI
-
+        id: gemini # Assign an ID to this step to access its output
         run: |
           echo "I want to extract UI text from my TSX files and generate i18n key-value pairs in English in JSON format. \
           Please follow this key naming convention: use the component file name (without extension) as the prefix, followed by the key name. \
-          For example, if the file is components/Login.tsx and the text is 'Click Me!', the key should be 'login.clickMe'. Do not use nested JSON \
-          This is running in a GitHub Actions environment, so do not print anything until all processing is complete. \
-          Return only the final result in valid JSON format, without any explanations, code snippets, or repeated prompts." \
-          | gemini > src/locales/generated.txt
-
+          For example, if the file is components/Login.tsx and the text is 'Click Me!', the key should be 'login.clickMe'. Do not use nested JSON. \
+          This is running in a GitHub Actions environment, so return only the final result in valid JSON format, without any explanations, code snippets, or repeated prompts. \
+          Wrap the JSON output in triple backticks with the json language identifier, like this: \`\`\`json\n{ ... }\n\`\`\`" | gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Extract valid JSON from Gemini output
+      - name: Extract JSON from Gemini output
         run: |
-          # Extract JSON block from raw_output.txt and save to generated.json
-          datetime=$(date +"%Y%m%d_%H%M%S")
-          filename="generated_$datetime.json"
-          
-           awk '/```json/{f=1;next} /```/{f=0} f' src/locales/generated.txt > "src/locales/$filename"
+          echo "${{ steps.gemini.outputs.result }}" | awk '/```json/{f=1;next} /```/{f=0} f' > src/locales/generated.json
+        shell: bash # Explicitly set shell to bash for string interpolation
 
-      #          awk '/```json/{f=1;next} /```/{f=0} f' generated.txt | jq . > "src/locales/$filename"
-      #
-
-
-      #          # 유효한 JSON인지 확인하고 저장
-      #          if echo "$json_block" | jq . > "src/locales/$filename"; then
-      #          echo "✅ JSON saved to $filename"
-      #          else
-      #          echo "{}" > "src/locales/$filename"
-      #          echo "⚠️ Invalid JSON. Saved empty object."
-      #          fi
+      - name: Check for valid JSON and handle empty output
+        run: |
+          if jq -e . src/locales/generated.json > /dev/null 2>&1; then
+            echo "✅ Valid JSON saved to src/locales/generated.json"
+          else
+            echo "⚠️ Invalid or empty JSON received from Gemini. Saving empty object."
+            echo "{}" > src/locales/generated.json
+          fi
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          git add .
-          git commit -m "Add generated locales"
+          git add src/locales/generated.json
+          git commit -m "Update generated locales" || echo "No changes to commit" # Handle cases where there are no changes
           git push
